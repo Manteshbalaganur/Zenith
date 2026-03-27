@@ -1,1 +1,7 @@
 project_id = "rwblhpamvijrwhhftstw"
+
+[functions.explore-concept]
+verify_jwt = false
+
+[functions.socratic-check]
+verify_jwt = false
