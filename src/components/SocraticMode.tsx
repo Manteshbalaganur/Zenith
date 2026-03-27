@@ -73,7 +73,7 @@ export function SocraticMode({ term, onCheck, isLoading }: SocraticModeProps) {
         <div className="space-y-2">
           <div className="flex items-center gap-2">
             {result.understood ? (
-              <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+              <CheckCircle2 className="w-5 h-5 text-success" />
             ) : (
               <XCircle className="w-5 h-5 text-accent" />
             )}

@@ -51,7 +51,7 @@ export function ExplanationPanel({
           <div className="flex items-center gap-2 mt-1">
             <DifficultyBadge difficulty={node.difficulty} />
             {node.status === "understood" && (
-              <span className="flex items-center gap-1 text-xs text-emerald-400">
+              <span className="flex items-center gap-1 text-xs text-success">
                 <CheckCircle2 className="w-3 h-3" /> Understood
               </span>
             )}
@@ -60,7 +60,7 @@ export function ExplanationPanel({
         </div>
         {node.status !== "understood" && (
           <Button onClick={onMarkUnderstood} variant="outline" size="sm"
-            className="shrink-0 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/10">
+            className="shrink-0 text-success border-success/30 hover:bg-success/10">
             <CheckCircle2 className="w-3 h-3 mr-1" /> I understand
           </Button>
         )}

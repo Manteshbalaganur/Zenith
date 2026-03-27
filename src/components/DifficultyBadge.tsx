@@ -2,7 +2,7 @@ import type { Difficulty } from "@/types/knowledge";
 import { Badge } from "@/components/ui/badge";
 
 const difficultyConfig: Record<Difficulty, { label: string; className: string }> = {
-  beginner: { label: "Beginner", className: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" },
+  beginner: { label: "Beginner", className: "bg-success/15 text-success border-success/30" },
   intermediate: { label: "Intermediate", className: "bg-primary/15 text-primary border-primary/30" },
   advanced: { label: "Advanced", className: "bg-accent/15 text-accent border-accent/30" },
 };
