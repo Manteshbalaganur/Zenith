@@ -14,6 +14,15 @@ export interface Resource {
   description: string;
 }
 
+export interface Attempt {
+  question: string;
+  userAnswer: string;
+  correctAnswer: string;
+  isCorrect: boolean;
+  confidence: "low" | "medium" | "high";
+  type: "definition" | "application" | "misconception" | "fill";
+}
+
 export interface KnowledgeNode {
   id: string;
   term: string;
@@ -24,6 +33,8 @@ export interface KnowledgeNode {
   depth: number;
   difficulty: Difficulty;
   socraticScore?: number;
+  interactions?: number;
+  attempts?: Attempt[];
   resources?: Resource[];
 }
 

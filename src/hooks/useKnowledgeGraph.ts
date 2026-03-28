@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import type { KnowledgeNode, Complexity, ExploreResponse, SocraticResponse } from "@/types/knowledge";
+import type { KnowledgeNode, Complexity, ExploreResponse, SocraticResponse, Attempt } from "@/types/knowledge";
 
 let nodeCounter = 0;
 const genId = () => `node-${Date.now()}-${++nodeCounter}`;
@@ -116,6 +116,7 @@ export function useKnowledgeGraph() {
     // Check if already explored
     const existing = nodes.find(n => n.term.toLowerCase() === query.toLowerCase());
     if (existing) {
+      setNodes(prev => prev.map(n => n.id === existing.id ? { ...n, interactions: (n.interactions || 1) + 1 } : n));
       setActiveNodeId(existing.id);
       setIsLoading(false);
       return existing;
@@ -143,6 +144,7 @@ export function useKnowledgeGraph() {
         parentId,
         depth,
         difficulty: response.concepts?.[0]?.difficulty || "intermediate",
+        interactions: 1,
       };
 
       setNodes(prev => [...prev, newNode]);
@@ -171,11 +173,11 @@ export function useKnowledgeGraph() {
 
       if (response.understood) {
         setNodes(prev => prev.map(n =>
-          n.id === nodeId ? { ...n, status: "understood" as const, socraticScore: response.score } : n
+          n.id === nodeId ? { ...n, status: "understood" as const, socraticScore: response.score, interactions: (n.interactions || 1) + 1 } : n
         ));
       } else {
         setNodes(prev => prev.map(n =>
-          n.id === nodeId ? { ...n, socraticScore: response.score } : n
+          n.id === nodeId ? { ...n, socraticScore: response.score, interactions: (n.interactions || 1) + 1 } : n
         ));
       }
       
@@ -201,7 +203,7 @@ export function useKnowledgeGraph() {
 
   const markUnderstood = useCallback((nodeId: string) => {
     setNodes(prev => prev.map(n =>
-      n.id === nodeId ? { ...n, status: "understood" as const, socraticScore: 100 } : n
+      n.id === nodeId ? { ...n, status: "understood" as const, socraticScore: 100, interactions: (n.interactions || 1) + 1 } : n
     ));
     setGlobalUnderstandingScore(prev => Math.round(prev * 0.3 + 100 * 0.7));
   }, []);
@@ -214,10 +216,24 @@ export function useKnowledgeGraph() {
         }
         return {
           ...n,
+          interactions: (n.interactions || 1) + 1,
           concepts: [
             ...(n.concepts || []),
             { term: customTerm, difficulty: n.difficulty, reason: "Added from selection" }
           ]
+        };
+      }
+      return n;
+    }));
+  }, []);
+
+  const addAttemptToNode = useCallback((nodeId: string, attempt: Attempt) => {
+    setNodes(prev => prev.map(n => {
+      if (n.id === nodeId) {
+        return {
+          ...n,
+          interactions: (n.interactions || 1) + 1,
+          attempts: [...(n.attempts || []), attempt]
         };
       }
       return n;
@@ -268,7 +284,7 @@ export function useKnowledgeGraph() {
 
   return {
     nodes, setNodes, isLoading, activeNodeId, setActiveNodeId, complexity, setComplexity, globalUnderstandingScore,
-    error, exploreConcept, checkUnderstanding, markUnderstood, addConceptToNode, stats,
+    error, exploreConcept, checkUnderstanding, markUnderstood, addConceptToNode, addAttemptToNode, stats,
     collapseUnderstanding, teachMeBackEvaluate, loadMap, mapId, sessionId
   };
 }

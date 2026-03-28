@@ -2,29 +2,35 @@ import { useKnowledgeGraph } from "@/hooks/useKnowledgeGraph";
 import { QueryInput } from "@/components/QueryInput";
 import { ExplanationPanel } from "@/components/ExplanationPanel";
 import { MindMapModal } from "@/components/MindMapModal";
+import { KnowledgeGraph } from "@/components/KnowledgeGraph";
 import { GuidedRecoveryModal } from "@/components/GuidedRecoveryModal";
+import { ReinforcementEngine } from "@/components/ReinforcementEngine";
 import { UnderstandingScore } from "@/components/UnderstandingScore";
 import { ComplexitySlider } from "@/components/ComplexitySlider";
 import { TeachMeBackMode } from "@/components/TeachMeBackMode";
-import { HistorySidebar } from "@/components/HistorySidebar";
-import { Loader2, Download, History, BrainCircuit, X, Network } from "lucide-react";
+import { Loader2, Download, Menu, BrainCircuit, X, Network, FileText, BarChart, Target } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useMemo, useState } from "react";
-import html2pdf from "html2pdf.js";
+import { runGapAnalysis, type GapAnalysisResult } from "@/utils/gapAnalysis";
+import ReactMarkdown from "react-markdown";
+import html2canvas from "html2canvas";
+import { jsPDF } from "jspdf";
 
 const Index = () => {
   const {
     nodes, setNodes, isLoading, activeNodeId, setActiveNodeId, complexity, setComplexity,
-    error, exploreConcept, checkUnderstanding, markUnderstood, addConceptToNode, stats,
+    error, exploreConcept, checkUnderstanding, markUnderstood, addConceptToNode, addAttemptToNode, stats,
     collapseUnderstanding, teachMeBackEvaluate, loadMap, sessionId
   } = useKnowledgeGraph();
 
   const [isTeachMeBackOpen, setIsTeachMeBackOpen] = useState(false);
   const [collapsedData, setCollapsedData] = useState<any>(null);
-  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isMindMapOpen, setIsMindMapOpen] = useState(false);
   const [activeRecoveryTerm, setActiveRecoveryTerm] = useState<string | null>(null);
   const [isTesting, setIsTesting] = useState(false);
+  const [mainView, setMainView] = useState<'explanation' | 'report' | 'analysis' | 'reinforce'>('explanation');
+  const [gapAnalysisData, setGapAnalysisData] = useState<GapAnalysisResult | null>(null);
 
   const handleCollapse = async () => {
     const data = await collapseUnderstanding();
@@ -34,22 +40,45 @@ const Index = () => {
     }
   };
 
-  const handleExportPDF = () => {
+  const handleExportPDF = async () => {
     const element = document.getElementById("pdf-content-area");
-    if (!element) return;
+    const mindmapElement = document.getElementById("mindmap-export-container");
+    if (!element || !mindmapElement) return;
+
     const itemsToHide = element.querySelectorAll(".pdf-ignore");
     itemsToHide.forEach(el => (el as HTMLElement).style.display = "none");
-    
-    const opt = {
-      margin: 10,
-      filename: `Zenith_${nodes[0]?.term}_${new Date().toISOString().split('T')[0]}.pdf`,
-      image: { type: 'jpeg' as const, quality: 0.98 },
-      html2canvas: { scale: 2 },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const }
-    };
-    html2pdf().set(opt).from(element).save().then(() => {
+    mindmapElement.style.display = "block"; // Temporarily show
+
+    // wait for layout
+    await new Promise(res => setTimeout(res, 500));
+
+    try {
+      const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+      
+      // Page 1: Explanation
+      const canvas1 = await html2canvas(element, { scale: 2, useCORS: true });
+      const imgData1 = canvas1.toDataURL('image/jpeg', 0.98);
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = (canvas1.height * pdfWidth) / canvas1.width;
+      pdf.addImage(imgData1, 'JPEG', 0, 0, pdfWidth, Math.min(pdfHeight, pdf.internal.pageSize.getHeight()));
+
+      // Page 2: Mindmap
+      pdf.addPage();
+      const canvas2 = await html2canvas(mindmapElement, { scale: 2, useCORS: true });
+      const imgData2 = canvas2.toDataURL('image/jpeg', 0.98);
+      const mmHeight = (canvas2.height * pdfWidth) / canvas2.width;
+      pdf.addImage(imgData2, 'JPEG', 0, 0, pdfWidth, Math.min(mmHeight, pdf.internal.pageSize.getHeight()));
+
+      pdf.save(`Zenith_${nodes[0]?.term || 'Export'}_${new Date().toISOString().split('T')[0]}.pdf`);
+    } finally {
       itemsToHide.forEach(el => (el as HTMLElement).style.display = "");
-    });
+      mindmapElement.style.display = "none";
+    }
+  };
+
+  const handleRunAnalysis = () => {
+    setGapAnalysisData(runGapAnalysis(nodes));
+    setMainView('analysis');
   };
 
   const activeNode = nodes.find(n => n.id === activeNodeId);
@@ -123,29 +152,13 @@ const Index = () => {
         </div>
 
         <div className="flex-1 flex justify-end items-center gap-2 md:gap-4 shrink-0">
-          <Button variant="ghost" size="icon" onClick={() => setIsHistoryOpen(prev => !prev)} className="hover:bg-primary/20 hover:text-primary transition-all rounded-full">
-            <History className="w-5 h-5" />
+          <Button variant="ghost" size="icon" onClick={() => setIsSidebarOpen(prev => !prev)} className="hover:bg-primary/20 hover:text-primary transition-all rounded-full lg:hidden">
+            <Menu className="w-5 h-5" />
           </Button>
           {nodes.length > 0 && (
-            <>
-              <Button onClick={() => setIsMindMapOpen(true)} variant="outline" size="sm" className="hidden sm:flex border-primary/30 hover:bg-primary/10 hover:shadow-[0_0_10px_rgba(var(--primary-rgb),0.2)] transition-all">
-                <Network className="w-4 h-4 mr-2" />
-                View Mind Map
-              </Button>
-              <Button variant="outline" size="sm" onClick={handleExportPDF} className="hidden md:flex border-primary/30 hover:bg-primary/10 hover:shadow-[0_0_10px_rgba(var(--primary-rgb),0.2)] transition-all">
-                <Download className="w-4 h-4 mr-2" />
-                Export PDF
-              </Button>
-              {!isTesting && (
-                <Button size="sm" onClick={handleCollapse} className="hidden lg:flex bg-gradient-to-r from-teal-500 to-orange-500 hover:opacity-90 shadow-[0_0_15px_rgba(20,184,166,0.5)] transition-all border-none text-white font-medium">
-                  <BrainCircuit className="w-4 h-4 mr-2" />
-                  Collapse <span className="hidden xl:inline ml-1">My Understanding</span>
-                </Button>
-              )}
-              <div className="w-32 sm:w-40 hidden sm:block">
-                <UnderstandingScore stats={stats} />
-              </div>
-            </>
+            <div className="w-32 sm:w-40 hidden sm:block">
+              <UnderstandingScore stats={stats} />
+            </div>
           )}
         </div>
       </header>
@@ -199,27 +212,122 @@ const Index = () => {
             </div>
 
             <div className="flex-1 flex flex-col lg:flex-row w-full min-h-0">
-              {/* Left Sidebar Layout */}
-              <div className={`${isHistoryOpen ? 'flex' : 'hidden lg:flex'} fixed lg:static inset-y-0 left-0 w-full sm:w-[350px] lg:w-[320px] 2xl:w-[380px] border-r border-border/50 bg-background/95 lg:bg-background/60 shadow-2xl lg:shadow-xl flex-col overflow-hidden z-40 transition-all duration-300`}>
+              {/* Left Sidebar Layout (Controls Panel) */}
+              <div className={`${isSidebarOpen ? 'flex' : 'hidden lg:flex'} fixed lg:static inset-y-0 left-0 w-full sm:w-[350px] lg:w-[320px] 2xl:w-[380px] border-r border-border/50 bg-background/95 lg:bg-background/60 shadow-2xl lg:shadow-xl flex-col overflow-hidden z-40 transition-all duration-300`}>
                 <div className="lg:hidden p-4 border-b border-border/50 flex justify-between items-center shrink-0">
                   <span className="font-bold text-lg">Menu</span>
-                  <Button variant="ghost" size="icon" onClick={() => setIsHistoryOpen(false)}>
+                  <Button variant="ghost" size="icon" onClick={() => setIsSidebarOpen(false)}>
                     <X className="w-5 h-5" />
                   </Button>
                 </div>
 
-                <div className="flex-1 lg:h-full p-4 flex flex-col overflow-y-auto">
-                  <HistorySidebar 
-                    sessionId={sessionId} 
-                    onSelectMap={(id) => { loadMap(id); setIsHistoryOpen(false); }} 
-                    isEmbedded={true} 
-                  />
+                <div className="flex-1 lg:h-full p-6 flex flex-col gap-4 overflow-y-auto">
+                  <h3 className="text-xs font-mono uppercase tracking-widest text-muted-foreground mb-2">Controls</h3>
+                  
+                  <Button onClick={() => { setIsMindMapOpen(true); setIsSidebarOpen(false); }} variant="outline" className="w-full justify-start border-primary/30 hover:bg-primary/10 transition-all">
+                    <Network className="w-4 h-4 mr-3 text-primary" />
+                    View Mindmap
+                  </Button>
+                  
+                  <Button onClick={() => { handleCollapse(); setIsSidebarOpen(false); }} variant="outline" className="w-full justify-start border-primary/30 hover:bg-primary/10 transition-all">
+                    <BrainCircuit className="w-4 h-4 mr-3 text-emerald-500" />
+                    Collapse View
+                  </Button>
+
+                  <hr className="w-full border-border/50 my-2" />
+
+                  <Button onClick={() => { handleExportPDF(); setIsSidebarOpen(false); }} variant="outline" className="w-full justify-start border-primary/30 hover:bg-primary/10 transition-all">
+                    <Download className="w-4 h-4 mr-3 text-cyan-400" />
+                    Export PDF
+                  </Button>
+                  
+                  <Button onClick={() => { setMainView('report'); setIsSidebarOpen(false); }} variant="outline" className="w-full justify-start border-primary/30 hover:bg-primary/10 transition-all">
+                    <FileText className="w-4 h-4 mr-3 text-orange-400" />
+                    Session Report
+                  </Button>
+
+                  <hr className="w-full border-border/50 my-2" />
+
+                  <Button onClick={() => { handleRunAnalysis(); setIsSidebarOpen(false); }} variant="outline" className="w-full justify-start border-primary/30 hover:bg-primary/10 transition-all">
+                    <BarChart className="w-4 h-4 mr-3 text-purple-400" />
+                    Analyze Understanding
+                  </Button>
+
+                  <Button onClick={() => { setMainView('reinforce'); setIsSidebarOpen(false); }} variant="outline" className="w-full justify-start border-primary/30 hover:bg-primary/10 transition-all">
+                    <Target className="w-4 h-4 mr-3 text-rose-400" />
+                    Reinforce Understanding
+                  </Button>
+                  
+                  {mainView !== 'explanation' && (
+                    <Button onClick={() => { setMainView('explanation'); setIsSidebarOpen(false); }} variant="ghost" className="w-full justify-start mt-4 transition-all text-muted-foreground">
+                      <X className="w-4 h-4 mr-3" />
+                      Close Current View
+                    </Button>
+                  )}
                 </div>
               </div>
 
               {/* Right: Explanation */}
               <div id="pdf-content-area" className="flex-1 flex flex-col min-h-0 relative z-10 p-2 md:p-6 lg:ml-2">
-              {activeNode ? (
+              {mainView === 'report' ? (
+                <div className="bg-card/70 border border-border/50 rounded-2xl shadow-xl h-full backdrop-blur-md overflow-y-auto p-6 md:p-8">
+                  <div className="prose prose-invert max-w-none">
+                    <h2 className="text-3xl font-bold mb-6 flex items-center gap-3"><FileText className="w-8 h-8 text-orange-400" /> Session Report</h2>
+                    <p className="text-muted-foreground mb-8">Generated {new Date().toLocaleDateString()}</p>
+                    
+                    <h3>Topics Explored</h3>
+                    <ul>
+                      {nodes.map(n => <li key={n.id}><strong>{n.term}</strong> (Depth: {n.depth})</li>)}
+                    </ul>
+
+                    <h3>Key Insights</h3>
+                    <p>You have navigated through {nodes.length} distinct concepts, drilling down to a maximum depth of {Math.max(0, ...nodes.map(n => n.depth))}. Your learning pattern suggests a {nodes.length > 5 ? 'comprehensive' : 'focused'} approach to mastering these domains.</p>
+                  </div>
+                </div>
+              ) : mainView === 'analysis' && gapAnalysisData ? (
+                <div className="bg-card/70 border border-border/50 rounded-2xl shadow-xl h-full backdrop-blur-md overflow-y-auto p-6 md:p-8">
+                  <div className="prose prose-invert max-w-none">
+                    <h2 className="text-3xl font-bold flex items-center gap-3 pt-0 mt-0"><BarChart className="w-8 h-8 text-purple-400" /> Knowledge Gap Analysis</h2>
+                    
+                    <div className="flex gap-4 my-6 not-prose">
+                      <div className="bg-background/50 border border-border p-4 rounded-xl flex-1 max-w-[200px]">
+                        <div className="text-xs font-bold tracking-widest text-muted-foreground uppercase mb-1">Estimated Level</div>
+                        <div className="text-3xl font-bold">{gapAnalysisData.level}</div>
+                      </div>
+                      <div className="bg-background/50 border border-border p-4 rounded-xl flex-1 max-w-[200px]">
+                        <div className="text-xs font-bold tracking-widest text-muted-foreground uppercase mb-1">Confidence Score</div>
+                        <div className="text-3xl font-bold text-primary">{gapAnalysisData.confidenceScore}%</div>
+                      </div>
+                    </div>
+
+                    <div className="grid md:grid-cols-2 gap-8 mt-8">
+                      <div>
+                        <h3 className="text-emerald-400 mt-0">Identified Strengths</h3>
+                        <ul className="pl-5">
+                          {gapAnalysisData.strengths.map((s, i) => <li key={i}>{s}</li>)}
+                        </ul>
+                      </div>
+                      <div>
+                         <h3 className="text-orange-400 mt-0">Knowledge Gaps</h3>
+                          <ul className="pl-5">
+                            {gapAnalysisData.gaps.map((s, i) => <li key={i}>{s}</li>)}
+                          </ul>
+                      </div>
+                    </div>
+
+                    <h3 className="text-cyan-400">Recommended Next Steps</h3>
+                    <ul className="pl-5">
+                      {gapAnalysisData.recommendations.map((s, i) => <li key={i}>{s}</li>)}
+                    </ul>
+                  </div>
+                </div>
+              ) : mainView === 'reinforce' && activeNode ? (
+                <ReinforcementEngine
+                  node={activeNode}
+                  onAddAttempt={addAttemptToNode}
+                  onClose={() => setMainView('explanation')}
+                />
+              ) : activeNode ? (
                 <div className="bg-card/70 border border-border/50 rounded-2xl shadow-xl h-full backdrop-blur-md overflow-hidden flex flex-col">
                   <ExplanationPanel
                     node={activeNode}
@@ -236,7 +344,7 @@ const Index = () => {
                   />
                 </div>
               ) : (
-                <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm border-2 border-dashed border-border/50 rounded-2xl m-4">
+                <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm border-2 border-dashed border-border/50 rounded-2xl m-4 bg-card/30 backdrop-blur-md">
                   Select a node to view its explanation
                 </div>
               )}
@@ -283,6 +391,17 @@ const Index = () => {
           }}
         />
       )}
+
+      {/* Hidden container for PDF export */}
+      <div id="mindmap-export-container" className="absolute top-0 left-0 w-[1200px] h-[800px] bg-background -z-50 opacity-0 pointer-events-none" style={{ display: 'none' }}>
+        {nodes.length > 0 && (
+           <KnowledgeGraph 
+             nodes={nodes} 
+             activeNodeId={activeNodeId} 
+             onNodeClick={() => {}} 
+           />
+        )}
+      </div>
     </div>
   );
 };
