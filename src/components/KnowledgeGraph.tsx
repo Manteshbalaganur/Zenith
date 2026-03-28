@@ -28,7 +28,30 @@ export function KnowledgeGraph({ nodes, activeNodeId, onNodeClick }: KnowledgeGr
     const layoutNodes: LayoutNode[] = [];
     const depthGroups: Map<number, KnowledgeNode[]> = new Map();
     
+    const exploredTerms = new Set(nodes.map(n => n.term.toLowerCase()));
+    const allRenderNodes: KnowledgeNode[] = [...nodes];
+    const addedUnexplored = new Set<string>();
+
     nodes.forEach(n => {
+      n.concepts?.forEach(concept => {
+        const cTerm = concept.term.toLowerCase();
+        if (!exploredTerms.has(cTerm) && !addedUnexplored.has(cTerm)) {
+          addedUnexplored.add(cTerm);
+          allRenderNodes.push({
+            id: `unexplored-${cTerm}`,
+            term: concept.term,
+            explanation: "",
+            concepts: [],
+            status: "unexplored",
+            parentId: n.id,
+            depth: n.depth + 1,
+            difficulty: concept.difficulty || n.difficulty,
+          });
+        }
+      });
+    });
+
+    allRenderNodes.forEach(n => {
       const group = depthGroups.get(n.depth) || [];
       group.push(n);
       depthGroups.set(n.depth, group);
@@ -67,6 +90,7 @@ export function KnowledgeGraph({ nodes, activeNodeId, onNodeClick }: KnowledgeGr
 
   const statusColor = (node: KnowledgeNode) => {
     if (node.status === "understood") return { core: "#EAB308", glow: "url(#glow-gold)" }; // Gold
+    if (node.status === "unexplored") return { core: "#4B5563", glow: "none" }; // Gray
     return { core: "#06B6D4", glow: "url(#glow-cyan)" }; // Cyan
   };
 

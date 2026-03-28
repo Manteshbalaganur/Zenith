@@ -19,9 +19,17 @@ export function useKnowledgeGraph() {
   const [isLoading, setIsLoading] = useState(false);
   const [activeNodeId, setActiveNodeId] = useState<string | null>(null);
   const [complexity, setComplexity] = useState<Complexity>("standard");
+  const [globalUnderstandingScore, setGlobalUnderstandingScore] = useState<number>(50);
   const [error, setError] = useState<string | null>(null);
   const [mapId, setMapId] = useState<string | null>(null);
   const sessionId = useMemo(genSessionId, []);
+
+  // Adaptive difficulty logic
+  useEffect(() => {
+    if (globalUnderstandingScore < 40) setComplexity("eli5");
+    else if (globalUnderstandingScore < 80) setComplexity("standard");
+    else setComplexity("expert");
+  }, [globalUnderstandingScore]);
 
   // Save changes to Supabase
   useEffect(() => {
@@ -165,7 +173,13 @@ export function useKnowledgeGraph() {
         setNodes(prev => prev.map(n =>
           n.id === nodeId ? { ...n, status: "understood" as const, socraticScore: response.score } : n
         ));
+      } else {
+        setNodes(prev => prev.map(n =>
+          n.id === nodeId ? { ...n, socraticScore: response.score } : n
+        ));
       }
+      
+      setGlobalUnderstandingScore(prev => Math.round(prev * 0.4 + response.score * 0.6));
 
       if (mapId) {
         (supabase as any).from('exploration_history').insert({
@@ -189,6 +203,25 @@ export function useKnowledgeGraph() {
     setNodes(prev => prev.map(n =>
       n.id === nodeId ? { ...n, status: "understood" as const, socraticScore: 100 } : n
     ));
+    setGlobalUnderstandingScore(prev => Math.round(prev * 0.3 + 100 * 0.7));
+  }, []);
+
+  const addConceptToNode = useCallback((nodeId: string, customTerm: string) => {
+    setNodes(prev => prev.map(n => {
+      if (n.id === nodeId) {
+        if (n.concepts?.some(c => c.term.toLowerCase() === customTerm.toLowerCase())) {
+          return n;
+        }
+        return {
+          ...n,
+          concepts: [
+            ...(n.concepts || []),
+            { term: customTerm, difficulty: n.difficulty, reason: "Added from selection" }
+          ]
+        };
+      }
+      return n;
+    }));
   }, []);
 
   const collapseUnderstanding = useCallback(async () => {
@@ -234,8 +267,8 @@ export function useKnowledgeGraph() {
   };
 
   return {
-    nodes, setNodes, isLoading, activeNodeId, setActiveNodeId, complexity, setComplexity,
-    error, exploreConcept, checkUnderstanding, markUnderstood, stats,
+    nodes, setNodes, isLoading, activeNodeId, setActiveNodeId, complexity, setComplexity, globalUnderstandingScore,
+    error, exploreConcept, checkUnderstanding, markUnderstood, addConceptToNode, stats,
     collapseUnderstanding, teachMeBackEvaluate, loadMap, mapId, sessionId
   };
 }

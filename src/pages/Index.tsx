@@ -1,12 +1,13 @@
 import { useKnowledgeGraph } from "@/hooks/useKnowledgeGraph";
 import { QueryInput } from "@/components/QueryInput";
 import { ExplanationPanel } from "@/components/ExplanationPanel";
-import { KnowledgeGraph } from "@/components/KnowledgeGraph";
+import { MindMapModal } from "@/components/MindMapModal";
+import { GuidedRecoveryModal } from "@/components/GuidedRecoveryModal";
 import { UnderstandingScore } from "@/components/UnderstandingScore";
 import { ComplexitySlider } from "@/components/ComplexitySlider";
 import { TeachMeBackMode } from "@/components/TeachMeBackMode";
 import { HistorySidebar } from "@/components/HistorySidebar";
-import { Loader2, Download, History, BrainCircuit, X } from "lucide-react";
+import { Loader2, Download, History, BrainCircuit, X, Network } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useMemo, useState } from "react";
 import html2pdf from "html2pdf.js";
@@ -14,13 +15,15 @@ import html2pdf from "html2pdf.js";
 const Index = () => {
   const {
     nodes, setNodes, isLoading, activeNodeId, setActiveNodeId, complexity, setComplexity,
-    error, exploreConcept, checkUnderstanding, markUnderstood, stats,
+    error, exploreConcept, checkUnderstanding, markUnderstood, addConceptToNode, stats,
     collapseUnderstanding, teachMeBackEvaluate, loadMap, sessionId
   } = useKnowledgeGraph();
 
   const [isTeachMeBackOpen, setIsTeachMeBackOpen] = useState(false);
   const [collapsedData, setCollapsedData] = useState<any>(null);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [isMindMapOpen, setIsMindMapOpen] = useState(false);
+  const [activeRecoveryTerm, setActiveRecoveryTerm] = useState<string | null>(null);
   const [isTesting, setIsTesting] = useState(false);
 
   const handleCollapse = async () => {
@@ -74,10 +77,30 @@ const Index = () => {
     await exploreConcept(query, null, 0);
   };
 
+  const handleNodeClick = (id: string) => {
+    if (id.startsWith("unexplored-")) {
+      const term = id.replace("unexplored-", "");
+      handleExplore(term);
+      setIsMindMapOpen(false);
+    } else {
+      setActiveNodeId(id);
+      setIsMindMapOpen(false);
+    }
+  };
+
   const handleBack = () => {
     if (breadcrumbs.length > 1) {
       setActiveNodeId(breadcrumbs[breadcrumbs.length - 2].id);
     }
+  };
+
+  const handleSocraticCheck = async (answer: string) => {
+    if (!activeNode) return null;
+    const response = await checkUnderstanding(activeNode.id, answer);
+    if (response && response.score < 40) {
+      setActiveRecoveryTerm(activeNode.term);
+    }
+    return response;
   };
 
   return (
@@ -105,6 +128,10 @@ const Index = () => {
           </Button>
           {nodes.length > 0 && (
             <>
+              <Button onClick={() => setIsMindMapOpen(true)} variant="outline" size="sm" className="hidden sm:flex border-primary/30 hover:bg-primary/10 hover:shadow-[0_0_10px_rgba(var(--primary-rgb),0.2)] transition-all">
+                <Network className="w-4 h-4 mr-2" />
+                View Mind Map
+              </Button>
               <Button variant="outline" size="sm" onClick={handleExportPDF} className="hidden md:flex border-primary/30 hover:bg-primary/10 hover:shadow-[0_0_10px_rgba(var(--primary-rgb),0.2)] transition-all">
                 <Download className="w-4 h-4 mr-2" />
                 Export PDF
@@ -181,21 +208,12 @@ const Index = () => {
                   </Button>
                 </div>
 
-                <div className="flex-1 lg:h-1/2 min-h-0 lg:min-h-[250px] flex flex-col border-b border-border/50 h-1/2">
+                <div className="flex-1 lg:h-full p-4 flex flex-col overflow-y-auto">
                   <HistorySidebar 
                     sessionId={sessionId} 
                     onSelectMap={(id) => { loadMap(id); setIsHistoryOpen(false); }} 
                     isEmbedded={true} 
                   />
-                </div>
-                
-                <div className="flex-1 lg:h-1/2 p-4 min-h-[420px] flex flex-col overflow-y-auto">
-                  <div className="flex items-center justify-between px-1 mb-2 shrink-0">
-                    <span className="text-xs font-mono uppercase tracking-widest text-primary font-bold text-shadow-sm">Concept Map</span>
-                  </div>
-                  <div className="flex-1 rounded-2xl bg-black/40 border border-primary/20 overflow-hidden relative shadow-[inset_0_0_20px_rgba(0,0,0,0.5)] min-h-[400px]">
-                    <KnowledgeGraph nodes={nodes} activeNodeId={activeNodeId} onNodeClick={setActiveNodeId} />
-                  </div>
                 </div>
               </div>
 
@@ -207,8 +225,9 @@ const Index = () => {
                     node={activeNode}
                     nodes={nodes}
                     onExplore={handleExplore}
+                    onAddConcept={(term) => addConceptToNode(activeNode.id, term)}
                     onBack={handleBack}
-                    onSocraticCheck={(answer) => checkUnderstanding(activeNode.id, answer)}
+                    onSocraticCheck={handleSocraticCheck}
                     onMarkUnderstood={() => markUnderstood(activeNode.id)}
                     isLoading={isLoading}
                     breadcrumbs={breadcrumbs}
@@ -242,6 +261,26 @@ const Index = () => {
           onClose={() => setIsTeachMeBackOpen(false)}
           onExpandGraph={(concept) => handleExplore(concept)}
           onMastered={() => {}}
+        />
+      )}
+
+      {isMindMapOpen && (
+        <MindMapModal
+          nodes={nodes}
+          activeNodeId={activeNodeId}
+          onNodeClick={handleNodeClick}
+          onClose={() => setIsMindMapOpen(false)}
+        />
+      )}
+
+      {activeRecoveryTerm && activeNode && (
+        <GuidedRecoveryModal
+          term={activeRecoveryTerm}
+          onClose={() => setActiveRecoveryTerm(null)}
+          onComplete={() => {
+            setActiveRecoveryTerm(null);
+            markUnderstood(activeNode.id); // Or re-test implicitly
+          }}
         />
       )}
     </div>

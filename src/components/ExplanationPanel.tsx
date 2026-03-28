@@ -7,10 +7,13 @@ import { ArrowLeft, CheckCircle2, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { SocraticResponse } from "@/types/knowledge";
 
+import { TextSelectionPopup } from "./TextSelectionPopup";
+
 interface ExplanationPanelProps {
   node: KnowledgeNode;
   nodes: KnowledgeNode[];
   onExplore: (term: string) => void;
+  onAddConcept: (term: string) => void;
   onBack: () => void;
   onSocraticCheck: (answer: string) => Promise<SocraticResponse | null>;
   onMarkUnderstood: () => void;
@@ -21,7 +24,7 @@ interface ExplanationPanelProps {
 }
 
 export function ExplanationPanel({
-  node, nodes, onExplore, onBack, onSocraticCheck, onMarkUnderstood, isLoading, breadcrumbs, isTesting, onTestingStateChange
+  node, nodes, onExplore, onAddConcept, onBack, onSocraticCheck, onMarkUnderstood, isLoading, breadcrumbs, isTesting, onTestingStateChange
 }: ExplanationPanelProps) {
   const exploredTerms = new Set(nodes.map(n => n.term.toLowerCase()));
 
@@ -125,6 +128,12 @@ export function ExplanationPanel({
           <SocraticMode term={node.term} onCheck={onSocraticCheck} isLoading={isLoading} onTestingStateChange={onTestingStateChange} />
         </div>
       </div>
+      
+      {/* Selection Popup */}
+      <TextSelectionPopup 
+        onAddConcept={onAddConcept} 
+        onExplore={onExplore} 
+      />
     </div>
   );
 }
