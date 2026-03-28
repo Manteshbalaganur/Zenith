@@ -1,9 +1,18 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { KnowledgeNode, Complexity, ExploreResponse, SocraticResponse } from "@/types/knowledge";
 
 let nodeCounter = 0;
-const genId = () => `node-${++nodeCounter}`;
+const genId = () => `node-${Date.now()}-${++nodeCounter}`;
+
+const genSessionId = () => {
+  let sid = localStorage.getItem("zenith_session_id");
+  if (!sid) {
+    sid = Math.random().toString(36).substring(2, 15);
+    localStorage.setItem("zenith_session_id", sid);
+  }
+  return sid;
+};
 
 export function useKnowledgeGraph() {
   const [nodes, setNodes] = useState<KnowledgeNode[]>([]);
@@ -11,6 +20,86 @@ export function useKnowledgeGraph() {
   const [activeNodeId, setActiveNodeId] = useState<string | null>(null);
   const [complexity, setComplexity] = useState<Complexity>("standard");
   const [error, setError] = useState<string | null>(null);
+  const [mapId, setMapId] = useState<string | null>(null);
+  const sessionId = useMemo(genSessionId, []);
+
+  // Save changes to Supabase
+  useEffect(() => {
+    if (nodes.length === 0) return;
+    
+    let isSubscribed = true;
+    (async () => {
+      try {
+        if (!mapId) {
+          const { data, error } = await (supabase as any).from('knowledge_maps').insert({
+            user_id: sessionId,
+            query: nodes[0].term,
+            title: nodes[0].term,
+            map_data: nodes
+          }).select().single();
+          if (!error && data && isSubscribed) {
+            setMapId(data.id);
+          }
+        } else {
+          await (supabase as any).from('knowledge_maps').update({
+            map_data: nodes,
+            updated_at: new Date().toISOString()
+          }).eq('id', mapId);
+        }
+      } catch(e) { console.error('Supabase save error', e); }
+    })();
+
+    return () => { isSubscribed = false; };
+  }, [nodes]); // Trigger whenever nodes array changes
+
+  // Realtime subscription (listen for changes on other tabs/devices)
+  useEffect(() => {
+    if (!mapId) return;
+    
+    const channel = supabase.channel(`public:knowledge_maps:id=eq.${mapId}`)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'knowledge_maps', filter: `id=eq.${mapId}` }, (payload) => {
+        // Simple heuristic to prevent loop (if map_data length drastically different, update it)
+        // In a real app we'd compare deeply or use a timestamp
+        if (payload.new && Array.isArray(payload.new.map_data)) {
+           setNodes(payload.new.map_data as KnowledgeNode[]);
+        }
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [mapId]);
+
+  // Log exploration history on node click
+  useEffect(() => {
+    if (!mapId || !activeNodeId) return;
+    const node = nodes.find(n => n.id === activeNodeId);
+    if (!node) return;
+    
+    (async () => {
+      try {
+        await (supabase as any).from('exploration_history').insert({
+          map_id: mapId,
+          action: 'viewed_node',
+          node_id: node.id,
+          node_title: node.term
+        });
+      } catch(e) {}
+    })();
+  }, [mapId, activeNodeId]);
+
+
+  const loadMap = useCallback(async (id: string) => {
+    setIsLoading(true);
+    try {
+      const { data, error } = await (supabase as any).from('knowledge_maps').select('*').eq('id', id).single();
+      if (!error && data) {
+        setNodes(data.map_data);
+        setMapId(data.id);
+        setActiveNodeId(data.map_data[0]?.id || null);
+      }
+    } catch(e) { console.error('Load map error', e); }
+    setIsLoading(false);
+  }, []);
 
   const exploreConcept = useCallback(async (query: string, parentId: string | null = null, depth: number = 0) => {
     setIsLoading(true);
@@ -41,6 +130,7 @@ export function useKnowledgeGraph() {
         term: query,
         explanation: response.explanation,
         concepts: response.concepts || [],
+        resources: response.recommended_resources || [],
         status: "explored",
         parentId,
         depth,
@@ -77,6 +167,15 @@ export function useKnowledgeGraph() {
         ));
       }
 
+      if (mapId) {
+        (supabase as any).from('exploration_history').insert({
+          map_id: mapId,
+          action: `socratic_test_score_${response.score}`,
+          node_id: nodeId,
+          node_title: node.term
+        }).then();
+      }
+
       setIsLoading(false);
       return response;
     } catch (e: any) {
@@ -92,6 +191,38 @@ export function useKnowledgeGraph() {
     ));
   }, []);
 
+  const collapseUnderstanding = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const { data, error: fnError } = await supabase.functions.invoke("collapse-understanding", {
+        body: { nodes },
+      });
+      if (fnError) throw fnError;
+      setIsLoading(false);
+      return data;
+    } catch (e: any) {
+      setError(e.message || "Failed to collapse understanding");
+      setIsLoading(false);
+      return null;
+    }
+  }, [nodes]);
+
+  const teachMeBackEvaluate = useCallback(async (explanation: string) => {
+    setIsLoading(true);
+    try {
+      const { data, error: fnError } = await supabase.functions.invoke("teach-me-back-evaluate", {
+        body: { nodes, explanation },
+      });
+      if (fnError) throw fnError;
+      setIsLoading(false);
+      return data;
+    } catch (e: any) {
+      setError(e.message || "Failed to evaluate teach back");
+      setIsLoading(false);
+      return null;
+    }
+  }, [nodes]);
+
   const stats = {
     total: nodes.length,
     explored: nodes.filter(n => n.status === "explored").length,
@@ -103,7 +234,8 @@ export function useKnowledgeGraph() {
   };
 
   return {
-    nodes, isLoading, activeNodeId, setActiveNodeId, complexity, setComplexity,
+    nodes, setNodes, isLoading, activeNodeId, setActiveNodeId, complexity, setComplexity,
     error, exploreConcept, checkUnderstanding, markUnderstood, stats,
+    collapseUnderstanding, teachMeBackEvaluate, loadMap, mapId, sessionId
   };
 }

@@ -8,6 +8,12 @@ export interface ConceptTerm {
   reason: string;
 }
 
+export interface Resource {
+  title: string;
+  url: string;
+  description: string;
+}
+
 export interface KnowledgeNode {
   id: string;
   term: string;
@@ -18,11 +24,13 @@ export interface KnowledgeNode {
   depth: number;
   difficulty: Difficulty;
   socraticScore?: number;
+  resources?: Resource[];
 }
 
 export interface ExploreResponse {
   explanation: string;
   concepts: ConceptTerm[];
+  recommended_resources?: Resource[];
 }
 
 export interface SocraticResponse {

@@ -19,9 +19,9 @@ serve(async (req) => {
       expert: "Explain at an expert level with precise technical terminology and nuance."
     };
 
-    const systemPrompt = `You are RUE (Recursive Understanding Engine), an AI designed to help users achieve deep understanding of concepts through recursive exploration.
+    const systemPrompt = `You are Zenith, an AI designed to help users achieve deep understanding of concepts through recursive exploration.
 
-Your task: Given a user's question or concept, provide a clear explanation and identify the key conceptual terms that a learner might need to understand.
+Your task: Given a user's question or concept, provide a clear explanation, identify the key conceptual terms that a learner might need to understand, and recommend learning resources.
 
 Complexity level: ${complexityGuide[complexity as keyof typeof complexityGuide] || complexityGuide.standard}
 
@@ -36,6 +36,13 @@ You MUST respond with valid JSON in exactly this format:
       "difficulty": "beginner|intermediate|advanced",
       "reason": "Why this term is important to understand"
     }
+  ],
+  "recommended_resources": [
+    {
+      "title": "Resource title",
+      "url": "https://...",
+      "description": "Short description of the resource"
+    }
   ]
 }
 
@@ -44,7 +51,11 @@ Rules for concept extraction:
 - Do NOT extract common/simple words like "is", "the", "provides"
 - Focus on terms that are: technically meaningful, potentially confusing, important building blocks
 - Tag difficulty accurately: beginner (common knowledge), intermediate (domain knowledge needed), advanced (expert-level)
-- Each concept should have a brief reason explaining why understanding it matters`;
+- Each concept should have a brief reason explaining why understanding it matters
+
+Rules for resources:
+- Return 3–5 reputable, up-to-date learning resources (articles, tutorials, docs) for this exact concept.
+- Prefer official documentation, GeeksforGeeks, Wikipedia, Stanford, MIT OCW, freeCodeCamp, etc.`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",

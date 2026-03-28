@@ -8,9 +8,10 @@ interface SocraticModeProps {
   term: string;
   onCheck: (answer: string) => Promise<SocraticResponse | null>;
   isLoading: boolean;
+  onTestingStateChange?: (isTesting: boolean) => void;
 }
 
-export function SocraticMode({ term, onCheck, isLoading }: SocraticModeProps) {
+export function SocraticMode({ term, onCheck, isLoading, onTestingStateChange }: SocraticModeProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [answer, setAnswer] = useState("");
   const [result, setResult] = useState<SocraticResponse | null>(null);
@@ -24,8 +25,11 @@ export function SocraticMode({ term, onCheck, isLoading }: SocraticModeProps) {
   if (!isOpen) {
     return (
       <button
-        onClick={() => setIsOpen(true)}
-        className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors mt-3"
+        onClick={() => {
+          setIsOpen(true);
+          onTestingStateChange?.(true);
+        }}
+        className="flex items-center gap-2 text-sm font-medium text-warning hover:text-warning/80 transition-colors mt-3 px-3 py-1.5 rounded-full border border-warning/30 bg-warning/10"
       >
         <Brain className="w-4 h-4" />
         <span>Test my understanding</span>
@@ -41,6 +45,9 @@ export function SocraticMode({ term, onCheck, isLoading }: SocraticModeProps) {
           Can you explain "{term}" in your own words?
         </span>
       </div>
+      <p className="text-xs text-warning font-medium mb-3 flex items-center gap-1.5 italic bg-warning/10 border border-warning/20 p-2 rounded-md">
+        Answer is blurred to ensure honest testing.
+      </p>
 
       {!result ? (
         <div className="space-y-3">
@@ -60,7 +67,10 @@ export function SocraticMode({ term, onCheck, isLoading }: SocraticModeProps) {
               Check Understanding
             </Button>
             <Button
-              onClick={() => setIsOpen(false)}
+              onClick={() => {
+                 setIsOpen(false);
+                 onTestingStateChange?.(false);
+              }}
               variant="ghost"
               size="sm"
               className="text-muted-foreground hover:text-foreground"
@@ -83,7 +93,12 @@ export function SocraticMode({ term, onCheck, isLoading }: SocraticModeProps) {
           </div>
           <p className="text-sm text-secondary-foreground">{result.feedback}</p>
           <Button
-            onClick={() => { setResult(null); setAnswer(""); setIsOpen(false); }}
+            onClick={() => { 
+                setResult(null); 
+                setAnswer(""); 
+                setIsOpen(false); 
+                onTestingStateChange?.(false);
+            }}
             variant="ghost"
             size="sm"
             className="text-muted-foreground hover:text-foreground mt-1"
